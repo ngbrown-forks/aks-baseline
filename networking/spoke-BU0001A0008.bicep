@@ -23,7 +23,7 @@ param location string
 
 var orgAppId = 'BU0001A0008'
 var clusterVNetName_var = 'vnet-spoke-${orgAppId}-00'
-var routeTableName_var = 'route-to-${location}-hub-fw'
+var routeTableName = 'route-to-${location}-hub-fw'
 var hubRgName = split(hubVnetResourceId, '/')[4]
 var hubNetworkName = split(hubVnetResourceId, '/')[8]
 var hubFwResourceId = resourceId(hubRgName, 'Microsoft.Network/azureFirewalls', 'fw-${location}')
@@ -32,8 +32,8 @@ var hubLaWorkspaceResourceId = resourceId(hubRgName, 'Microsoft.OperationalInsig
 var toHubPeeringName = 'spoke-to-${hubNetworkName}'
 var primaryClusterPipName_var = 'pip-${orgAppId}-00'
 
-resource routeTableName 'Microsoft.Network/routeTables@2020-05-01' = {
-  name: routeTableName_var
+resource routeTable_resource 'Microsoft.Network/routeTables@2020-05-01' = {
+  name: routeTableName
   location: location
   properties: {
     routes: [
@@ -49,7 +49,7 @@ resource routeTableName 'Microsoft.Network/routeTables@2020-05-01' = {
   }
 }
 
-resource nsg_clusterVNetName_nodepools 'Microsoft.Network/networkSecurityGroups@2020-05-01' = {
+resource nsg_clusterVNet_nodepools 'Microsoft.Network/networkSecurityGroups@2020-05-01' = {
   name: 'nsg-${clusterVNetName_var}-nodepools'
   location: location
   properties: {
@@ -57,7 +57,7 @@ resource nsg_clusterVNetName_nodepools 'Microsoft.Network/networkSecurityGroups@
   }
 }
 
-resource nsg_clusterVNetName_nodepools_Microsoft_Insights_toHub 'Microsoft.Network/networkSecurityGroups/providers/diagnosticSettings@2017-05-01-preview' = {
+resource nsg_clusterVNet_nodepools_Microsoft_Insights_toHub 'Microsoft.Network/networkSecurityGroups/providers/diagnosticSettings@2017-05-01-preview' = {
   name: 'nsg-${clusterVNetName_var}-nodepools/Microsoft.Insights/toHub'
   properties: {
     workspaceId: hubLaWorkspaceResourceId
@@ -73,11 +73,11 @@ resource nsg_clusterVNetName_nodepools_Microsoft_Insights_toHub 'Microsoft.Netwo
     ]
   }
   dependsOn: [
-    nsg_clusterVNetName_nodepools
+    nsg_clusterVNet_nodepools
   ]
 }
 
-resource nsg_clusterVNetName_aksilbs 'Microsoft.Network/networkSecurityGroups@2020-05-01' = {
+resource nsg_clusterVNet_aksilbs 'Microsoft.Network/networkSecurityGroups@2020-05-01' = {
   name: 'nsg-${clusterVNetName_var}-aksilbs'
   location: location
   properties: {
@@ -85,7 +85,7 @@ resource nsg_clusterVNetName_aksilbs 'Microsoft.Network/networkSecurityGroups@20
   }
 }
 
-resource nsg_clusterVNetName_aksilbs_Microsoft_Insights_toHub 'Microsoft.Network/networkSecurityGroups/providers/diagnosticSettings@2017-05-01-preview' = {
+resource nsg_clusterVNet_aksilbs_Microsoft_Insights_toHub 'Microsoft.Network/networkSecurityGroups/providers/diagnosticSettings@2017-05-01-preview' = {
   name: 'nsg-${clusterVNetName_var}-aksilbs/Microsoft.Insights/toHub'
   properties: {
     workspaceId: hubLaWorkspaceResourceId
@@ -101,11 +101,11 @@ resource nsg_clusterVNetName_aksilbs_Microsoft_Insights_toHub 'Microsoft.Network
     ]
   }
   dependsOn: [
-    nsg_clusterVNetName_aksilbs
+    nsg_clusterVNet_aksilbs
   ]
 }
 
-resource nsg_clusterVNetName_appgw 'Microsoft.Network/networkSecurityGroups@2020-05-01' = {
+resource nsg_clusterVNet_appgw 'Microsoft.Network/networkSecurityGroups@2020-05-01' = {
   name: 'nsg-${clusterVNetName_var}-appgw'
   location: location
   properties: {
@@ -182,7 +182,7 @@ resource nsg_clusterVNetName_appgw 'Microsoft.Network/networkSecurityGroups@2020
   }
 }
 
-resource nsg_clusterVNetName_appgw_Microsoft_Insights_toHub 'Microsoft.Network/networkSecurityGroups/providers/diagnosticSettings@2017-05-01-preview' = {
+resource nsg_clusterVNet_appgw_Microsoft_Insights_toHub 'Microsoft.Network/networkSecurityGroups/providers/diagnosticSettings@2017-05-01-preview' = {
   name: 'nsg-${clusterVNetName_var}-appgw/Microsoft.Insights/toHub'
   properties: {
     workspaceId: hubLaWorkspaceResourceId
@@ -198,11 +198,11 @@ resource nsg_clusterVNetName_appgw_Microsoft_Insights_toHub 'Microsoft.Network/n
     ]
   }
   dependsOn: [
-    nsg_clusterVNetName_appgw
+    nsg_clusterVNet_appgw
   ]
 }
 
-resource clusterVNetName 'Microsoft.Network/virtualNetworks@2020-05-01' = {
+resource clusterVNet_resource 'Microsoft.Network/virtualNetworks@2020-05-01' = {
   name: clusterVNetName_var
   location: location
   properties: {
@@ -217,10 +217,10 @@ resource clusterVNetName 'Microsoft.Network/virtualNetworks@2020-05-01' = {
         properties: {
           addressPrefix: '10.240.0.0/22'
           routeTable: {
-            id: routeTableName.id
+            id: routeTable_resource.id
           }
           networkSecurityGroup: {
-            id: nsg_clusterVNetName_nodepools.id
+            id: nsg_clusterVNet_nodepools.id
           }
           privateEndpointNetworkPolicies: 'Disabled'
           privateLinkServiceNetworkPolicies: 'Enabled'
@@ -231,10 +231,10 @@ resource clusterVNetName 'Microsoft.Network/virtualNetworks@2020-05-01' = {
         properties: {
           addressPrefix: '10.240.4.0/28'
           routeTable: {
-            id: routeTableName.id
+            id: routeTable_resource.id
           }
           networkSecurityGroup: {
-            id: nsg_clusterVNetName_aksilbs.id
+            id: nsg_clusterVNet_aksilbs.id
           }
           privateEndpointNetworkPolicies: 'Disabled'
           privateLinkServiceNetworkPolicies: 'Disabled'
@@ -245,7 +245,7 @@ resource clusterVNetName 'Microsoft.Network/virtualNetworks@2020-05-01' = {
         properties: {
           addressPrefix: '10.240.4.16/28'
           networkSecurityGroup: {
-            id: nsg_clusterVNetName_appgw.id
+            id: nsg_clusterVNet_appgw.id
           }
           privateEndpointNetworkPolicies: 'Disabled'
           privateLinkServiceNetworkPolicies: 'Disabled'
@@ -253,10 +253,19 @@ resource clusterVNetName 'Microsoft.Network/virtualNetworks@2020-05-01' = {
       }
     ]
   }
+  resource snetClusternodes 'subnets' existing = {
+    name: 'snet-clusternodes'
+  }
+  resource snetClusterIngressServices 'subnets' existing = {
+    name: 'snet-clusteringressservices'
+  }
+  resource snetAppgw 'subnets' existing = {
+    name: 'snet-applicationgateway'
+  }
 }
 
-resource clusterVNetName_toHubPeeringName 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2020-05-01' = {
-  parent: clusterVNetName
+resource clusterVNetName_toHubPeering_resource 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2020-05-01' = {
+  parent: clusterVNet_resource
   name: '${toHubPeeringName}'
   properties: {
     remoteVirtualNetwork: {
@@ -269,7 +278,7 @@ resource clusterVNetName_toHubPeeringName 'Microsoft.Network/virtualNetworks/vir
   }
 }
 
-resource clusterVNetName_Microsoft_Insights_toHub 'Microsoft.Network/virtualNetworks/providers/diagnosticSettings@2017-05-01-preview' = {
+resource clusterVNet_Microsoft_Insights_toHub 'Microsoft.Network/virtualNetworks/providers/diagnosticSettings@2017-05-01-preview' = {
   name: '${clusterVNetName_var}/Microsoft.Insights/toHub'
   properties: {
     workspaceId: hubLaWorkspaceResourceId
@@ -281,24 +290,24 @@ resource clusterVNetName_Microsoft_Insights_toHub 'Microsoft.Network/virtualNetw
     ]
   }
   dependsOn: [
-    clusterVNetName
+    clusterVNet_resource
   ]
 }
 
-module CreateHubTo_clusterVNetName_Peer './nested_CreateHubTo_clusterVNetName_Peer.bicep' = {
+module CreateHubTo_clusterVNet_Peer './nested_CreateHubTo_clusterVNetName_Peer.bicep' = {
   name: 'CreateHubTo${clusterVNetName_var}Peer'
   scope: resourceGroup(hubRgName)
   params: {
-    resourceId_Microsoft_Network_virtualNetworks_variables_clusterVNetName: clusterVNetName.id
+    resourceId_Microsoft_Network_virtualNetworks_variables_clusterVNetName: clusterVNet_resource.id
     variables_hubNetworkName: hubNetworkName
     variables_clusterVNetName: clusterVNetName_var
   }
   dependsOn: [
-    clusterVNetName_toHubPeeringName
+    clusterVNetName_toHubPeering_resource
   ]
 }
 
-resource primaryClusterPipName 'Microsoft.Network/publicIpAddresses@2020-05-01' = {
+resource primaryClusterPip_resource 'Microsoft.Network/publicIpAddresses@2020-05-01' = {
   name: primaryClusterPipName_var
   location: location
   sku: {
@@ -311,8 +320,8 @@ resource primaryClusterPipName 'Microsoft.Network/publicIpAddresses@2020-05-01' 
   }
 }
 
-output clusterVnetResourceId string = clusterVNetName.id
+output clusterVnetResourceId string = clusterVNet_resource.id
 output nodepoolSubnetResourceIds array = [
-  resourceId('Microsoft.Network/virtualNetworks/subnets', clusterVNetName_var, 'snet-clusternodes')
+  clusterVNet_resource::snetClusternodes.id
 ]
-output appGwPublicIpAddress string = primaryClusterPipName.properties.ipAddress
+output appGwPublicIpAddress string = primaryClusterPip_resource.properties.ipAddress

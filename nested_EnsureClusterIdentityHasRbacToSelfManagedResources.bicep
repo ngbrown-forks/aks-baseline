@@ -1,28 +1,36 @@
-param resourceId_Microsoft_ManagedIdentity_userAssignedIdentities_variables_clusterControlPlaneIdentityName object
-param variables_vnetNodePoolSubnetResourceId string /* TODO: fill in correct type */
-param variables_networkContributorRole string /* TODO: fill in correct type */
-param variables_clusterControlPlaneIdentityName string /* TODO: fill in correct type */
-param variables_vnetName string /* TODO: fill in correct type */
-param variables_vnetIngressServicesSubnetResourceId string /* TODO: fill in correct type */
+param clusterControlPlaneIdentityPrincipalId string
+param vnetNodePoolSubnetResourceId string
+param networkContributorRole string
+param clusterControlPlaneIdentityName string
+param vnetName string
+param vnetIngressServicesSubnetResourceId string
 
-resource variables_vnetNodePoolSubnetResourceId_variables_networkContributorRole_variables_clusterControlPlaneIdentityName 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
-  scope: 'Microsoft.Network/virtualNetworks/${variables_vnetName}/subnets/snet-clusternodes'
-  name: guid(variables_vnetNodePoolSubnetResourceId, variables_networkContributorRole, variables_clusterControlPlaneIdentityName)
-  properties: {
-    roleDefinitionId: variables_networkContributorRole
-    description: 'Allows cluster identity to join the nodepool vmss resources to this subnet.'
-    principalId: resourceId_Microsoft_ManagedIdentity_userAssignedIdentities_variables_clusterControlPlaneIdentityName.principalId
-    principalType: 'ServicePrincipal'
+resource vnet_resource 'Microsoft.Network/virtualNetworks@2020-05-01' existing = {
+  name: vnetName
+  resource snet_clusternodes 'subnets' existing = {
+    name: 'snet-clusternodes'
+  }
+  resource snet_clusteringressservices 'subnets' existing = {
+    name: 'snet-clusteringressservices'
   }
 }
 
-resource variables_vnetIngressServicesSubnetResourceId_variables_networkContributorRole_variables_clusterControlPlaneIdentityName 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
-  scope: 'Microsoft.Network/virtualNetworks/${variables_vnetName}/subnets/snet-clusteringressservices'
-  name: guid(variables_vnetIngressServicesSubnetResourceId, variables_networkContributorRole, variables_clusterControlPlaneIdentityName)
+resource clusterRoleAssignmentsToSnetClusternodes 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
+  scope: vnet_resource::snet_clusternodes
+  name: guid(vnetNodePoolSubnetResourceId, networkContributorRole, clusterControlPlaneIdentityName)
   properties: {
-    roleDefinitionId: variables_networkContributorRole
+    roleDefinitionId: networkContributorRole
+    description: 'Allows cluster identity to join the nodepool vmss resources to this subnet.'
+    principalId: clusterControlPlaneIdentityPrincipalId
+  }
+}
+
+resource clusterRoleAssignmentsToSnetIngressServices 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
+  scope: vnet_resource::snet_clusteringressservices
+  name: guid(vnetIngressServicesSubnetResourceId, networkContributorRole, clusterControlPlaneIdentityName)
+  properties: {
+    roleDefinitionId: networkContributorRole
     description: 'Allows cluster identity to join load balancers (ingress resources) to this subnet.'
-    principalId: resourceId_Microsoft_ManagedIdentity_userAssignedIdentities_variables_clusterControlPlaneIdentityName.principalId
-    principalType: 'ServicePrincipal'
+    principalId: clusterControlPlaneIdentityPrincipalId
   }
 }

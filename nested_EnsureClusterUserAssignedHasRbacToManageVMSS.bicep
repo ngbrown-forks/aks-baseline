@@ -1,11 +1,10 @@
-param resourceId_Microsoft_ContainerService_managedClusters_variables_clusterName object
-param variables_virtualMachineContributorRole string /* TODO: fill in correct type */
+param clusterKubletIdentityId string
+param virtualMachineContributorRole string
 
 resource id 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
-  name: guid(resourceGroup().id)
+  name: guid(resourceGroup().id, virtualMachineContributorRole)
   properties: {
-    roleDefinitionId: variables_virtualMachineContributorRole
-    principalId: resourceId_Microsoft_ContainerService_managedClusters_variables_clusterName.identityProfile.kubeletidentity.objectId
-    principalType: 'ServicePrincipal'
+    roleDefinitionId: virtualMachineContributorRole
+    principalId: clusterKubletIdentityId
   }
 }

@@ -56,7 +56,7 @@ var vnetName = split(targetVnetResourceId, '/')[8]
 var vnetAcrPrivateEndpointSubnetResourceId = '${targetVnetResourceId}/subnets/snet-clusternodes'
 var acrPrivateDnsZonesName_var = 'privatelink.azurecr.io'
 
-resource logAnalyticsWorkspaceName 'Microsoft.OperationalInsights/workspaces@2020-10-01' = {
+resource logAnalyticsWorkspace_resource 'Microsoft.OperationalInsights/workspaces@2020-10-01' = {
   name: logAnalyticsWorkspaceName_var
   location: location
   properties: {
@@ -67,14 +67,14 @@ resource logAnalyticsWorkspaceName 'Microsoft.OperationalInsights/workspaces@202
   }
 }
 
-resource acrPrivateDnsZonesName 'Microsoft.Network/privateDnsZones@2020-06-01' = {
+resource acrPrivateDnsZones_resource 'Microsoft.Network/privateDnsZones@2020-06-01' = {
   name: acrPrivateDnsZonesName_var
   location: 'global'
   properties: {}
 }
 
-resource acrPrivateDnsZonesName_to_vnetName 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
-  parent: acrPrivateDnsZonesName
+resource acrPrivateDnsZones_to_vnetName 'Microsoft.Network/privateDnsZones/virtualNetworkLinks@2020-06-01' = {
+  parent: acrPrivateDnsZones_resource
   name: 'to_${vnetName}'
   location: 'global'
   properties: {
@@ -85,7 +85,7 @@ resource acrPrivateDnsZonesName_to_vnetName 'Microsoft.Network/privateDnsZones/v
   }
 }
 
-resource defaultAcrName 'Microsoft.ContainerRegistry/registries@2020-11-01-preview' = {
+resource defaultAcr_resource 'Microsoft.ContainerRegistry/registries@2020-11-01-preview' = {
   name: defaultAcrName_var
   location: location
   sku: {
@@ -121,17 +121,17 @@ resource defaultAcrName 'Microsoft.ContainerRegistry/registries@2020-11-01-previ
   }
 }
 
-resource defaultAcrName_geoRedundancyLocation 'Microsoft.ContainerRegistry/registries/replications@2020-11-01-preview' = {
-  parent: defaultAcrName
+resource defaultAcr_geoRedundancyLocation 'Microsoft.ContainerRegistry/registries/replications@2020-11-01-preview' = {
+  parent: defaultAcr_resource
   name: '${geoRedundancyLocation}'
   location: geoRedundancyLocation
   properties: {}
 }
 
-resource defaultAcrName_Microsoft_Insights_default 'Microsoft.ContainerRegistry/registries/providers/diagnosticSettings@2017-05-01-preview' = {
+resource defaultAcr_Microsoft_Insights_default 'Microsoft.ContainerRegistry/registries/providers/diagnosticSettings@2017-05-01-preview' = {
   name: '${defaultAcrName_var}/Microsoft.Insights/default'
   properties: {
-    workspaceId: logAnalyticsWorkspaceName.id
+    workspaceId: logAnalyticsWorkspace_resource.id
     metrics: [
       {
         timeGrain: 'PT1M'
@@ -151,7 +151,7 @@ resource defaultAcrName_Microsoft_Insights_default 'Microsoft.ContainerRegistry/
     ]
   }
   dependsOn: [
-    defaultAcrName
+    defaultAcr_resource
   ]
 }
 
@@ -166,7 +166,7 @@ resource acr_to_vnetName 'Microsoft.Network/privateEndpoints@2020-11-01' = {
       {
         name: 'nodepools'
         properties: {
-          privateLinkServiceId: defaultAcrName.id
+          privateLinkServiceId: defaultAcr_resource.id
           groupIds: [
             'registry'
           ]
@@ -175,7 +175,7 @@ resource acr_to_vnetName 'Microsoft.Network/privateEndpoints@2020-11-01' = {
     ]
   }
   dependsOn: [
-    defaultAcrName_geoRedundancyLocation
+    defaultAcr_geoRedundancyLocation
   ]
 }
 
@@ -188,7 +188,7 @@ resource acr_to_vnetName_default 'Microsoft.Network/privateEndpoints/privateDnsZ
       {
         name: 'privatelink-azurecr-io'
         properties: {
-          privateDnsZoneId: acrPrivateDnsZonesName.id
+          privateDnsZoneId: acrPrivateDnsZones_resource.id
         }
       }
     ]

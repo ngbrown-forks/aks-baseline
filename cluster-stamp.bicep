@@ -59,9 +59,9 @@ var managedIdentityOperatorRole = '${subscription().id}/providers/Microsoft.Auth
 var virtualMachineContributorRole = '${subscription().id}/providers/Microsoft.Authorization/roleDefinitions/9980e02c-c2be-4d73-94e8-173b1dc7cf3c'
 var keyVaultReader = '${subscription().id}/providers/Microsoft.Authorization/roleDefinitions/21090545-7ca7-4776-b22c-e363652d74d2'
 var keyVaultSecretsUserRole = '${subscription().id}/providers/Microsoft.Authorization/roleDefinitions/4633458b-17de-408a-b874-0445c86b69e6'
-var clusterAdminRoleId = 'b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b'
-var clusterReaderRoleId = '7f6c6a51-bcf8-42ba-9220-52d62157d7db'
-var serviceClusterUserRoleId = '4abbcc35-e782-43d8-92c5-2d3f1bd2253f'
+var clusterAdminRoleId = '/subscriptions/${subscription().subscriptionId}/providers/Microsoft.Authorization/roleDefinitions/b1ff04bb-8a4e-4dc4-8eb5-8693973ce19b'
+var clusterReaderRoleId = '/subscriptions/${subscription().subscriptionId}/providers/Microsoft.Authorization/roleDefinitions/7f6c6a51-bcf8-42ba-9220-52d62157d7db'
+var serviceClusterUserRoleId = '/subscriptions/${subscription().subscriptionId}/providers/Microsoft.Authorization/roleDefinitions/4abbcc35-e782-43d8-92c5-2d3f1bd2253f'
 var subRgUniqueString = uniqueString('aks', subscription().subscriptionId, resourceGroup().id)
 var nodeResourceGroupName = 'rg-${clusterName}-nodepools'
 var clusterName = 'aks-${subRgUniqueString}'
@@ -136,7 +136,7 @@ resource keyVault_resource 'Microsoft.KeyVault/vaults@2021-06-01-preview' = {
   ]
 }
 
-resource keyVaultName_gateway_public_cert 'Microsoft.KeyVault/vaults/secrets@2021-06-01-preview' = {
+resource keyVault_gateway_public_cert 'Microsoft.KeyVault/vaults/secrets@2021-06-01-preview' = {
   parent: keyVault_resource
   name: 'gateway-public-cert'
   properties: {
@@ -144,7 +144,7 @@ resource keyVaultName_gateway_public_cert 'Microsoft.KeyVault/vaults/secrets@202
   }
 }
 
-resource keyVaultName_appgw_ingress_internal_aks_ingress_tls 'Microsoft.KeyVault/vaults/secrets@2021-06-01-preview' = {
+resource keyVault_appgw_ingress_internal_aks_ingress_tls 'Microsoft.KeyVault/vaults/secrets@2021-06-01-preview' = {
   parent: keyVault_resource
   name: 'appgw-ingress-internal-aks-ingress-tls'
   properties: {
@@ -493,7 +493,6 @@ module EnsureClusterIdentityHasRbacToSelfManagedResources './nested_EnsureCluste
     clusterControlPlaneIdentityPrincipalId: mi_cluster_controlPlane.properties.principalId
     vnetNodePoolSubnetResourceId: vnetNodePoolSubnetResourceId
     networkContributorRole: networkContributorRole
-    clusterControlPlaneIdentityName: mi_cluster_controlPlane.name
     vnetName: vnetName
     vnetIngressServicesSubnetResourceId: vnetIngressServicesSubnetResourceId
   }
@@ -692,6 +691,11 @@ resource cluster_resource 'Microsoft.ContainerService/managedClusters@2021-08-01
           logAnalyticsWorkspaceResourceId: resourceId('Microsoft.OperationalInsights/workspaces', logAnalyticsWorkspaceName)
         }
       }
+      /*
+      extensionManager: {
+        enabled: true
+      }
+      */
       aciConnectorLinux: {
         enabled: false
       }
@@ -851,7 +855,7 @@ resource cluster_configuration_bootstrap 'Microsoft.KubernetesConfiguration/boot
   ]
 }
 
-resource clusterName_Microsoft_Authorization_Microsoft_ContainerService_managedClusters_clusterName_omsagent_monitoringMetricsPublisherRole 'Microsoft.ContainerService/managedClusters/providers/roleAssignments@2020-04-01-preview' = {
+resource ContainerService_monitoringMetricsPublisherRole 'Microsoft.ContainerService/managedClusters/providers/roleAssignments@2020-04-01-preview' = {
   name: '${clusterName}/Microsoft.Authorization/${guid(cluster_resource.id, 'omsagent', monitoringMetricsPublisherRole)}'
   properties: {
     roleDefinitionId: monitoringMetricsPublisherRole
@@ -900,7 +904,7 @@ module EnsureClusterUserAssignedHasRbacToManageVMSS './nested_EnsureClusterUserA
   ]
 }
 
-resource Microsoft_ContainerService_managedClusters_clusterName_acrPullRole 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
+resource ContainerService_acrPullRole 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = {
   scope: 'Microsoft.ContainerRegistry/registries${defaultAcrName}'
   name: guid(cluster_resource.id, acrPullRole)
   properties: {
@@ -1526,44 +1530,44 @@ resource Restarting_container_count_for_clusterName_CI_7 'Microsoft.Insights/met
   ]
 }
 
-resource aad_admin_group_Microsoft_ContainerService_managedClusters_clusterName_clusterAdminAadGroupObjectId 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = if (isUsingAzureRBACasKubernetesRBAC) {
+resource aad_admin_group_clusterAdmin 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = if (isUsingAzureRBACasKubernetesRBAC) {
   scope: cluster_resource
   name: guid('aad-admin-group', cluster_resource.id, clusterAdminAadGroupObjectId)
   properties: {
-    roleDefinitionId: '/subscriptions/${subscription().subscriptionId}/providers/Microsoft.Authorization/roleDefinitions/${clusterAdminRoleId}'
+    roleDefinitionId: clusterAdminRoleId
     description: 'Members of this group are cluster admins of this cluster.'
     principalId: clusterAdminAadGroupObjectId
     principalType: 'Group'
   }
 }
 
-resource aad_admin_group_sc_Microsoft_ContainerService_managedClusters_clusterName_clusterAdminAadGroupObjectId 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = if (isUsingAzureRBACasKubernetesRBAC) {
+resource aad_admin_group_sc_clusterAdmin 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = if (isUsingAzureRBACasKubernetesRBAC) {
   scope: cluster_resource
   name: guid('aad-admin-group-sc', cluster_resource.id, clusterAdminAadGroupObjectId)
   properties: {
-    roleDefinitionId: '/subscriptions/${subscription().subscriptionId}/providers/Microsoft.Authorization/roleDefinitions/${serviceClusterUserRoleId}'
+    roleDefinitionId: serviceClusterUserRoleId
     description: 'Members of this group are cluster users of this cluster.'
     principalId: clusterAdminAadGroupObjectId
     principalType: 'Group'
   }
 }
 
-resource aad_a0008_reader_group_Microsoft_ContainerService_managedClusters_clusterName_a0008NamespaceReaderAadGroupObjectId 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = if (isUsingAzureRBACasKubernetesRBAC && (a0008NamespaceReaderAadGroupObjectId != clusterAdminAadGroupObjectId)) {
+resource aad_a0008_reader_group_a0008Namespace 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = if (isUsingAzureRBACasKubernetesRBAC && (a0008NamespaceReaderAadGroupObjectId != clusterAdminAadGroupObjectId)) {
   scope: '/subscriptions/${subscription().subscriptionId}/resourcegroups/${resourceGroup().name}/providers/Microsoft.ContainerService/managedClusters/${clusterName}/namespaces/a0008'
   name: guid('aad-a0008-reader-group', cluster_resource.id, a0008NamespaceReaderAadGroupObjectId)
   properties: {
-    roleDefinitionId: '/subscriptions/${subscription().subscriptionId}/providers/Microsoft.Authorization/roleDefinitions/${clusterReaderRoleId}'
+    roleDefinitionId: clusterReaderRoleId
     principalId: a0008NamespaceReaderAadGroupObjectId
     description: 'Members of this group are cluster admins of the a0008 namespace in this cluster.'
     principalType: 'Group'
   }
 }
 
-resource aad_a0008_reader_group_sc_Microsoft_ContainerService_managedClusters_clusterName_a0008NamespaceReaderAadGroupObjectId 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = if (isUsingAzureRBACasKubernetesRBAC && (a0008NamespaceReaderAadGroupObjectId != clusterAdminAadGroupObjectId)) {
+resource aad_a0008_reader_group_sc_a0008Namespace 'Microsoft.Authorization/roleAssignments@2020-04-01-preview' = if (isUsingAzureRBACasKubernetesRBAC && (a0008NamespaceReaderAadGroupObjectId != clusterAdminAadGroupObjectId)) {
   scope: cluster_resource
   name: guid('aad-a0008-reader-group-sc', cluster_resource.id, a0008NamespaceReaderAadGroupObjectId)
   properties: {
-    roleDefinitionId: '/subscriptions/${subscription().subscriptionId}/providers/Microsoft.Authorization/roleDefinitions/${serviceClusterUserRoleId}'
+    roleDefinitionId: serviceClusterUserRoleId
     principalId: a0008NamespaceReaderAadGroupObjectId
     description: 'Members of this group are cluster users of this cluster.'
     principalType: 'Group'

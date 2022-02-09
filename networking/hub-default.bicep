@@ -1,4 +1,7 @@
-@description('The hub\'s regional affinity. All resources tied to this hub will also be homed in this region.  The network team maintains this approved regional list which is a subset of zones with Availability Zone support.')
+targetScope = 'resourceGroup'
+
+/*** PARAMETERS ***/
+
 @allowed([
   'australiaeast'
   'canadacentral'
@@ -16,43 +19,44 @@
   'japaneast'
   'southeastasia'
 ])
+@description('The hub\'s regional affinity. All resources tied to this hub will also be homed in this region. The network team maintains this approved regional list which is a subset of zones with Availability Zone support.')
 param location string
 
-@description('A /24 to contain the regional firewall, management, and gateway subnet')
-@minLength(10)
+@description('Optional. A /24 to contain the regional firewall, management, and gateway subnet. Defaults to 10.200.0.0/24')
 @maxLength(18)
-param hubVnetAddressSpace string = '10.200.0.0/24'
+@minLength(10)
+param hubVirtualNetworkAddressSpace string = '10.200.0.0/24'
 
-@description('A /26 under the VNet Address Space for the regional Azure Firewall')
-@minLength(10)
+@description('Optional. A /26 under the virtual network address space for the regional Azure Firewall. Defaults to 10.200.0.0/26')
 @maxLength(18)
-param azureFirewallSubnetAddressSpace string = '10.200.0.0/26'
+@minLength(10)
+param hubVirtualNetworkAzureFirewallSubnetAddressSpace string = '10.200.0.0/26'
 
-@description('A /27 under the VNet Address Space for our regional On-Prem Gateway')
-@minLength(10)
+@description('Optional. A /27 under the virtual network address space for our regional On-Prem Gateway. Defaults to 10.200.0.64/27')
 @maxLength(18)
-param azureGatewaySubnetAddressSpace string = '10.200.0.64/27'
+@minLength(10)
+param hubVirtualNetworkGatewaySubnetAddressSpace string = '10.200.0.64/27'
 
-@description('A /27 under the VNet Address Space for regional Azure Bastion')
-@minLength(10)
+@description('Optional. A /27 under the virtual network address space for regional Azure Bastion. Defaults to 10.200.0.96/27')
 @maxLength(18)
-param azureBastionSubnetAddressSpace string = '10.200.0.96/27'
+@minLength(10)
+param hubVirtualNetworkBastionSubnetAddressSpace string = '10.200.0.96/27'
 
 var baseFwPipName = 'pip-fw-${location}'
-var hubFwPipNames_var = [
+var hubFwPipNames = [
   '${baseFwPipName}-default'
   '${baseFwPipName}-01'
   '${baseFwPipName}-02'
 ]
-var hubFwName_var = 'fw-${location}'
-var fwPoliciesBaseName_var = 'fw-policies-base'
-var fwPoliciesName_var = 'fw-policies-${location}'
-var hubVNetName_var = 'vnet-${location}-hub'
-var bastionNetworkNsgName_var = 'nsg-${location}-bastion'
-var hubLaName_var = 'la-hub-${location}-${uniqueString(hubVnetName.id)}'
+var hubFirewallName = 'fw-${location}'
+var fwPolicyBaseName = 'fw-policies-base'
+var fwPolicyName = 'fw-policies-${location}'
+var vnetHubName = 'vnet-${location}-hub'
+var nsgBastionSubnetName = 'nsg-${location}-bastion'
+var hubLaName = 'la-hub-${location}-${uniqueString(vnetHub.id)}'
 
-resource hubLaName 'Microsoft.OperationalInsights/workspaces@2020-08-01' = {
-  name: hubLaName_var
+resource laHub 'Microsoft.OperationalInsights/workspaces@2021-06-01' = {
+  name: hubLaName
   location: location
   properties: {
     sku: {
@@ -64,19 +68,20 @@ resource hubLaName 'Microsoft.OperationalInsights/workspaces@2020-08-01' = {
   }
 }
 
-resource bastionNetworkNsgName 'Microsoft.Network/networkSecurityGroups@2020-05-01' = {
-  name: bastionNetworkNsgName_var
+// NSG around the Azure Bastion Subnet.
+resource nsgBastionSubnet 'Microsoft.Network/networkSecurityGroups@2021-05-01' = {
+  name: nsgBastionSubnetName
   location: location
   properties: {
     securityRules: [
       {
-        name: 'AllowWebExperienceInBound'
+        name: 'AllowWebExperienceInbound'
         properties: {
           description: 'Allow our users in. Update this to be as restrictive as possible.'
           protocol: 'Tcp'
           sourcePortRange: '*'
-          sourceAddressPrefix: 'Internet'
           destinationPortRange: '443'
+          sourceAddressPrefix: 'Internet'
           destinationAddressPrefix: '*'
           access: 'Allow'
           priority: 100
@@ -84,13 +89,13 @@ resource bastionNetworkNsgName 'Microsoft.Network/networkSecurityGroups@2020-05-
         }
       }
       {
-        name: 'AllowControlPlaneInBound'
+        name: 'AllowControlPlaneInbound'
         properties: {
           description: 'Service Requirement. Allow control plane access. Regional Tag not yet supported.'
           protocol: 'Tcp'
           sourcePortRange: '*'
-          sourceAddressPrefix: 'GatewayManager'
           destinationPortRange: '443'
+          sourceAddressPrefix: 'GatewayManager'
           destinationAddressPrefix: '*'
           access: 'Allow'
           priority: 110
@@ -98,13 +103,13 @@ resource bastionNetworkNsgName 'Microsoft.Network/networkSecurityGroups@2020-05-
         }
       }
       {
-        name: 'AllowHealthProbesInBound'
+        name: 'AllowHealthProbesInbound'
         properties: {
           description: 'Service Requirement. Allow Health Probes.'
           protocol: 'Tcp'
           sourcePortRange: '*'
-          sourceAddressPrefix: 'AzureLoadBalancer'
           destinationPortRange: '443'
+          sourceAddressPrefix: 'AzureLoadBalancer'
           destinationAddressPrefix: '*'
           access: 'Allow'
           priority: 120
@@ -112,16 +117,16 @@ resource bastionNetworkNsgName 'Microsoft.Network/networkSecurityGroups@2020-05-
         }
       }
       {
-        name: 'AllowBastionHostToHostInBound'
+        name: 'AllowBastionHostToHostInbound'
         properties: {
           description: 'Service Requirement. Allow Required Host to Host Communication.'
           protocol: '*'
           sourcePortRange: '*'
-          sourceAddressPrefix: 'VirtualNetwork'
           destinationPortRanges: [
             '8080'
             '5701'
           ]
+          sourceAddressPrefix: 'VirtualNetwork'
           destinationAddressPrefix: 'VirtualNetwork'
           access: 'Allow'
           priority: 130
@@ -129,12 +134,13 @@ resource bastionNetworkNsgName 'Microsoft.Network/networkSecurityGroups@2020-05-
         }
       }
       {
-        name: 'DenyAllInBound'
+        name: 'DenyAllInbound'
         properties: {
+          description: 'No further inbound traffic allowed.'
           protocol: '*'
           sourcePortRange: '*'
-          sourceAddressPrefix: '*'
           destinationPortRange: '*'
+          sourceAddressPrefix: '*'
           destinationAddressPrefix: '*'
           access: 'Deny'
           priority: 1000
@@ -142,9 +148,9 @@ resource bastionNetworkNsgName 'Microsoft.Network/networkSecurityGroups@2020-05-
         }
       }
       {
-        name: 'AllowSshToVnetOutBound'
+        name: 'AllowSshToVnetOutbound'
         properties: {
-          description: 'Allow SSH out to the VNet'
+          description: 'Allow SSH out to the virtual network'
           protocol: 'Tcp'
           sourcePortRange: '*'
           sourceAddressPrefix: '*'
@@ -156,10 +162,10 @@ resource bastionNetworkNsgName 'Microsoft.Network/networkSecurityGroups@2020-05-
         }
       }
       {
-        name: 'AllowRdpToVnetOutBound'
+        name: 'AllowRdpToVnetOutbound'
         properties: {
+          description: 'Allow RDP out to the virtual network'
           protocol: 'Tcp'
-          description: 'Allow RDP out to the VNet'
           sourcePortRange: '*'
           sourceAddressPrefix: '*'
           destinationPortRange: '3389'
@@ -170,7 +176,7 @@ resource bastionNetworkNsgName 'Microsoft.Network/networkSecurityGroups@2020-05-
         }
       }
       {
-        name: 'AllowControlPlaneOutBound'
+        name: 'AllowControlPlaneOutbound'
         properties: {
           description: 'Required for control plane outbound. Regional prefix not yet supported'
           protocol: 'Tcp'
@@ -184,7 +190,7 @@ resource bastionNetworkNsgName 'Microsoft.Network/networkSecurityGroups@2020-05-
         }
       }
       {
-        name: 'AllowBastionHostToHostOutBound'
+        name: 'AllowBastionHostToHostOutbound'
         properties: {
           description: 'Service Requirement. Allow Required Host to Host Communication.'
           protocol: '*'
@@ -201,7 +207,7 @@ resource bastionNetworkNsgName 'Microsoft.Network/networkSecurityGroups@2020-05-
         }
       }
       {
-        name: 'AllowBastionCertificateValidationOutBound'
+        name: 'AllowBastionCertificateValidationOutbound'
         properties: {
           description: 'Service Requirement. Allow Required Session and Certificate Validation.'
           protocol: '*'
@@ -215,12 +221,13 @@ resource bastionNetworkNsgName 'Microsoft.Network/networkSecurityGroups@2020-05-
         }
       }
       {
-        name: 'DenyAllOutBound'
+        name: 'DenyAllOutbound'
         properties: {
+          description: 'No further outbound traffic allowed.'
           protocol: '*'
           sourcePortRange: '*'
-          sourceAddressPrefix: '*'
           destinationPortRange: '*'
+          sourceAddressPrefix: '*'
           destinationAddressPrefix: '*'
           access: 'Deny'
           priority: 1000
@@ -232,9 +239,9 @@ resource bastionNetworkNsgName 'Microsoft.Network/networkSecurityGroups@2020-05-
 }
 
 resource bastionNetworkNsgName_Microsoft_Insights_default 'Microsoft.Network/networkSecurityGroups/providers/diagnosticSettings@2017-05-01-preview' = {
-  name: '${bastionNetworkNsgName_var}/Microsoft.Insights/default'
+  name: '${nsgBastionSubnetName}/Microsoft.Insights/default'
   properties: {
-    workspaceId: hubLaName.id
+    workspaceId: laHub.id
     logs: [
       {
         category: 'NetworkSecurityGroupEvent'
@@ -247,38 +254,39 @@ resource bastionNetworkNsgName_Microsoft_Insights_default 'Microsoft.Network/net
     ]
   }
   dependsOn: [
-    bastionNetworkNsgName
+    nsgBastionSubnet
   ]
 }
 
-resource hubVnetName 'Microsoft.Network/virtualNetworks@2020-05-01' = {
-  name: hubVNetName_var
+// The regional hub network
+resource vnetHub 'Microsoft.Network/virtualNetworks@2021-05-01' = {
+  name: vnetHubName
   location: location
   properties: {
     addressSpace: {
       addressPrefixes: [
-        hubVnetAddressSpace
+        hubVirtualNetworkAddressSpace
       ]
     }
     subnets: [
       {
         name: 'AzureFirewallSubnet'
         properties: {
-          addressPrefix: azureFirewallSubnetAddressSpace
+          addressPrefix: hubVirtualNetworkAzureFirewallSubnetAddressSpace
         }
       }
       {
         name: 'GatewaySubnet'
         properties: {
-          addressPrefix: azureGatewaySubnetAddressSpace
+          addressPrefix: hubVirtualNetworkGatewaySubnetAddressSpace
         }
       }
       {
         name: 'AzureBastionSubnet'
         properties: {
-          addressPrefix: azureBastionSubnetAddressSpace
+          addressPrefix: hubVirtualNetworkBastionSubnetAddressSpace
           networkSecurityGroup: {
-            id: bastionNetworkNsgName.id
+            id: nsgBastionSubnet.id
           }
         }
       }
@@ -286,10 +294,10 @@ resource hubVnetName 'Microsoft.Network/virtualNetworks@2020-05-01' = {
   }
 }
 
-resource hubVnetName_Microsoft_Insights_default 'Microsoft.Network/virtualNetworks/providers/diagnosticSettings@2017-05-01-preview' = {
-  name: '${hubVNetName_var}/Microsoft.Insights/default'
+resource vnetHub_diagnosticSettings 'Microsoft.Network/virtualNetworks/providers/diagnosticSettings@2017-05-01-preview' = {
+  name: '${vnetHubName}/Microsoft.Insights/default'
   properties: {
-    workspaceId: hubLaName.id
+    workspaceId: laHub.id
     metrics: [
       {
         category: 'AllMetrics'
@@ -298,11 +306,11 @@ resource hubVnetName_Microsoft_Insights_default 'Microsoft.Network/virtualNetwor
     ]
   }
   dependsOn: [
-    hubVnetName
+    vnetHub
   ]
 }
 
-resource hubFwPipNames 'Microsoft.Network/publicIpAddresses@2020-05-01' = [for item in hubFwPipNames_var: {
+resource pipsAzureFirewall 'Microsoft.Network/publicIPAddresses@2021-05-01' = [for item in hubFwPipNames: {
   name: item
   location: location
   sku: {
@@ -315,8 +323,9 @@ resource hubFwPipNames 'Microsoft.Network/publicIpAddresses@2020-05-01' = [for i
   }
 }]
 
-resource fwPoliciesBaseName 'Microsoft.Network/firewallPolicies@2021-02-01' = {
-  name: fwPoliciesBaseName_var
+// Azure Firewall starter policy
+resource fwPolicyBase 'Microsoft.Network/firewallPolicies@2021-05-01' = {
+  name: fwPolicyBaseName
   location: location
   properties: {
     sku: {
@@ -333,8 +342,11 @@ resource fwPoliciesBaseName 'Microsoft.Network/firewallPolicies@2021-02-01' = {
   }
 }
 
-resource fwPoliciesBaseName_DefaultNetworkRuleCollectionGroup 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2021-02-01' = {
-  parent: fwPoliciesBaseName
+// Network hub starts out with only supporting DNS. This is only being done for
+// simplicity in this deployment and is not guidance, please ensure all firewall
+// rules are aligned with your security standards.
+resource defaultNetworkRuleCollectionGroup 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2021-02-01' = {
+  parent: fwPolicyBase
   name: 'DefaultNetworkRuleCollectionGroup'
   location: location
   properties: {
@@ -373,12 +385,12 @@ resource fwPoliciesBaseName_DefaultNetworkRuleCollectionGroup 'Microsoft.Network
   }
 }
 
-resource fwPoliciesName 'Microsoft.Network/firewallPolicies@2021-02-01' = {
-  name: fwPoliciesName_var
+resource fwPolicy 'Microsoft.Network/firewallPolicies@2021-02-01' = {
+  name: fwPolicyName
   location: location
   properties: {
     basePolicy: {
-      id: fwPoliciesBaseName.id
+      id: fwPolicyBase.id
     }
     sku: {
       tier: 'Standard'
@@ -393,12 +405,12 @@ resource fwPoliciesName 'Microsoft.Network/firewallPolicies@2021-02-01' = {
     }
   }
   dependsOn: [
-    fwPoliciesBaseName_DefaultNetworkRuleCollectionGroup
+    defaultNetworkRuleCollectionGroup
   ]
 }
 
-resource fwPoliciesName_DefaultDnatRuleCollectionGroup 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2021-02-01' = {
-  parent: fwPoliciesName
+resource defaultDnatRuleCollectionGroup 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2021-02-01' = {
+  parent: fwPolicy
   name: 'DefaultDnatRuleCollectionGroup'
   location: location
   properties: {
@@ -407,8 +419,8 @@ resource fwPoliciesName_DefaultDnatRuleCollectionGroup 'Microsoft.Network/firewa
   }
 }
 
-resource fwPoliciesName_DefaultApplicationRuleCollectionGroup 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2021-02-01' = {
-  parent: fwPoliciesName
+resource defaultApplicationRuleCollectionGroup 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2021-02-01' = {
+  parent: fwPolicy
   name: 'DefaultApplicationRuleCollectionGroup'
   location: location
   properties: {
@@ -416,12 +428,12 @@ resource fwPoliciesName_DefaultApplicationRuleCollectionGroup 'Microsoft.Network
     ruleCollections: []
   }
   dependsOn: [
-    fwPoliciesName_DefaultDnatRuleCollectionGroup
+    defaultDnatRuleCollectionGroup
   ]
 }
 
 resource fwPoliciesName_DefaultNetworkRuleCollectionGroup 'Microsoft.Network/firewallPolicies/ruleCollectionGroups@2021-02-01' = {
-  parent: fwPoliciesName
+  parent: fwPolicy
   name: 'DefaultNetworkRuleCollectionGroup'
   location: location
   properties: {
@@ -429,12 +441,13 @@ resource fwPoliciesName_DefaultNetworkRuleCollectionGroup 'Microsoft.Network/fir
     ruleCollections: []
   }
   dependsOn: [
-    fwPoliciesName_DefaultApplicationRuleCollectionGroup
+    defaultApplicationRuleCollectionGroup
   ]
 }
 
-resource hubFwName 'Microsoft.Network/azureFirewalls@2020-11-01' = {
-  name: hubFwName_var
+// This is the regional Azure Firewall that all regional spoke networks can egress through.
+resource hubFirewall 'Microsoft.Network/azureFirewalls@2021-05-01' = {
+  name: hubFirewallName
   location: location
   zones: [
     '1'
@@ -450,29 +463,29 @@ resource hubFwName 'Microsoft.Network/azureFirewalls@2020-11-01' = {
     threatIntelMode: 'Deny'
     ipConfigurations: [
       {
-        name: hubFwPipNames_var[0]
+        name: hubFwPipNames[0]
         properties: {
           subnet: {
-            id: resourceId('Microsoft.Network/virtualNetworks/subnets', hubVNetName_var, 'AzureFirewallSubnet')
+            id: resourceId('Microsoft.Network/virtualNetworks/subnets', vnetHubName, 'AzureFirewallSubnet')
           }
           publicIPAddress: {
-            id: resourceId('Microsoft.Network/publicIpAddresses', hubFwPipNames_var[0])
-          }
-        }
-      }
-      {
-        name: hubFwPipNames_var[1]
-        properties: {
-          publicIPAddress: {
-            id: resourceId('Microsoft.Network/publicIpAddresses', hubFwPipNames_var[1])
+            id: resourceId('Microsoft.Network/publicIpAddresses', hubFwPipNames[0])
           }
         }
       }
       {
-        name: hubFwPipNames_var[2]
+        name: hubFwPipNames[1]
         properties: {
           publicIPAddress: {
-            id: resourceId('Microsoft.Network/publicIpAddresses', hubFwPipNames_var[2])
+            id: resourceId('Microsoft.Network/publicIpAddresses', hubFwPipNames[1])
+          }
+        }
+      }
+      {
+        name: hubFwPipNames[2]
+        properties: {
+          publicIPAddress: {
+            id: resourceId('Microsoft.Network/publicIpAddresses', hubFwPipNames[2])
           }
         }
       }
@@ -481,20 +494,20 @@ resource hubFwName 'Microsoft.Network/azureFirewalls@2020-11-01' = {
     networkRuleCollections: []
     applicationRuleCollections: []
     firewallPolicy: {
-      id: fwPoliciesName.id
+      id: fwPolicy.id
     }
   }
   dependsOn: [
-    hubFwPipNames
-    hubVnetName
+    pipsAzureFirewall
+    vnetHub
     fwPoliciesName_DefaultNetworkRuleCollectionGroup
   ]
 }
 
-resource hubFwName_Microsoft_Insights_default 'Microsoft.Network/azureFirewalls/providers/diagnosticSettings@2017-05-01-preview' = {
-  name: '${hubFwName_var}/Microsoft.Insights/default'
+resource hubFirewall_diagnosticSettings 'Microsoft.Network/azureFirewalls/providers/diagnosticSettings@2017-05-01-preview' = {
+  name: '${hubFirewallName}/Microsoft.Insights/default'
   properties: {
-    workspaceId: hubLaName.id
+    workspaceId: laHub.id
     logs: [
       {
         category: 'AzureFirewallApplicationRule'
@@ -517,8 +530,10 @@ resource hubFwName_Microsoft_Insights_default 'Microsoft.Network/azureFirewalls/
     ]
   }
   dependsOn: [
-    hubFwName
+    hubFirewall
   ]
 }
 
-output hubVnetId string = hubVnetName.id
+/*** OUTPUTS ***/
+
+output hubVnetId string = vnetHub.id

@@ -29,21 +29,34 @@ param location string
 // A designator that represents a business unit id and application id
 var orgAppId = 'BU0001A0008'
 var clusterVNetName = 'vnet-spoke-${orgAppId}-00'
-var routeTableName = 'route-to-${location}-hub-fw'
-var hubRgName = split(hubVnetResourceId, '/')[4]
-var hubNetworkName = split(hubVnetResourceId, '/')[8]
-var hubFwResourceId = resourceId(hubRgName, 'Microsoft.Network/azureFirewalls', 'fw-${location}')
-var hubLaWorkspaceName = 'la-hub-${location}-${uniqueString(hubVnetResourceId)}'
-var hubLaWorkspaceResourceId = resourceId(hubRgName, 'Microsoft.OperationalInsights/workspaces', hubLaWorkspaceName)
-var toHubPeeringName = 'spoke-to-${hubNetworkName}'
-var primaryClusterPipName_var = 'pip-${orgAppId}-00'
 
+var hubNetworkName = split(hubVnetResourceId, '/')[8]
+
+/*** EXISTING HUB RESOURCES ***/
+
+// This is 'rg-enterprise-networking-hubs' if using the default values in the walkthrough
+resource hubResourceGroup 'Microsoft.Resources/resourceGroups@2021-04-01' existing = {
+  scope: subscription()
+  name: '${split(hubVnetResourceId,'/')[4]}'
+}
+
+// This is the firewall that was deployed in 'hub-default.bicep'
+resource hubFirewall 'Microsoft.Network/azureFirewalls@2021-05-01' existing = {
+  scope: hubResourceGroup
+  name: 'fw-${location}'
+}
+
+// This is the networking log analytics workspace (in the hub)
+resource laHub 'Microsoft.OperationalInsights/workspaces@2021-06-01' existing = {
+  scope: hubResourceGroup
+  name: 'la-hub-${location}'
+}
 
 /*** RESOURCES ***/
 
 // Next hop to the regional hub's Azure Firewall
 resource routeNextHopToFirewall 'Microsoft.Network/routeTables@2021-05-01' = {
-  name: routeTableName
+  name: 'route-to-${location}-hub-fw'
   location: location
   properties: {
     routes: [
@@ -52,7 +65,7 @@ resource routeNextHopToFirewall 'Microsoft.Network/routeTables@2021-05-01' = {
         properties: {
           nextHopType: 'VirtualAppliance'
           addressPrefix: '0.0.0.0/0'
-          nextHopIpAddress: reference(hubFwResourceId, '2020-05-01').ipConfigurations[0].properties.privateIpAddress
+          nextHopIpAddress: hubFirewall.properties.ipConfigurations[0].properties.privateIPAddress
         }
       }
     ]
@@ -68,10 +81,11 @@ resource nsgNodepoolSubnet 'Microsoft.Network/networkSecurityGroups@2021-05-01' 
   }
 }
 
-resource nsg_clusterVNet_nodepools_Microsoft_Insights_toHub 'Microsoft.Network/networkSecurityGroups/providers/diagnosticSettings@2017-05-01-preview' = {
-  name: 'nsg-${clusterVNetName}-nodepools/Microsoft.Insights/toHub'
+resource nsgNodepoolSubnet_diagnosticsSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  scope: nsgNodepoolSubnet
+  name: 'default'
   properties: {
-    workspaceId: hubLaWorkspaceResourceId
+    workspaceId: laHub.id
     logs: [
       {
         category: 'NetworkSecurityGroupEvent'
@@ -83,9 +97,6 @@ resource nsg_clusterVNet_nodepools_Microsoft_Insights_toHub 'Microsoft.Network/n
       }
     ]
   }
-  dependsOn: [
-    nsgNodepoolSubnet
-  ]
 }
 
 // Default NSG on the AKS internal load balancer subnet. Feel free to constrict further.
@@ -97,10 +108,11 @@ resource nsgInternalLoadBalancerSubnet 'Microsoft.Network/networkSecurityGroups@
   }
 }
 
-resource nsg_clusterVNet_aksilbs_Microsoft_Insights_toHub 'Microsoft.Network/networkSecurityGroups/providers/diagnosticSettings@2017-05-01-preview' = {
-  name: 'nsg-${clusterVNetName}-aksilbs/Microsoft.Insights/toHub'
+resource nsgInternalLoadBalancerSubnet_diagnosticsSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  scope: nsgInternalLoadBalancerSubnet
+  name: 'default'
   properties: {
-    workspaceId: hubLaWorkspaceResourceId
+    workspaceId: laHub.id
     logs: [
       {
         category: 'NetworkSecurityGroupEvent'
@@ -112,9 +124,6 @@ resource nsg_clusterVNet_aksilbs_Microsoft_Insights_toHub 'Microsoft.Network/net
       }
     ]
   }
-  dependsOn: [
-    nsgInternalLoadBalancerSubnet
-  ]
 }
 
 // NSG on the Application Gateway subnet.
@@ -197,10 +206,11 @@ resource nsgAppGwSubnet 'Microsoft.Network/networkSecurityGroups@2021-05-01' = {
   }
 }
 
-resource nsg_clusterVNet_appgw_Microsoft_Insights_toHub 'Microsoft.Network/networkSecurityGroups/providers/diagnosticSettings@2017-05-01-preview' = {
-  name: 'nsg-${clusterVNetName}-appgw/Microsoft.Insights/toHub'
+resource nsgAppGwSubnet_diagnosticsSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  scope: nsgAppGwSubnet
+  name: 'default'
   properties: {
-    workspaceId: hubLaWorkspaceResourceId
+    workspaceId: laHub.id
     logs: [
       {
         category: 'NetworkSecurityGroupEvent'
@@ -212,9 +222,6 @@ resource nsg_clusterVNet_appgw_Microsoft_Insights_toHub 'Microsoft.Network/netwo
       }
     ]
   }
-  dependsOn: [
-    nsgAppGwSubnet
-  ]
 }
 
 // The spoke virtual network.
@@ -284,7 +291,7 @@ resource vnetSpoke 'Microsoft.Network/virtualNetworks@2021-05-01' = {
 
 resource clusterVNetName_toHubPeering_resource 'Microsoft.Network/virtualNetworks/virtualNetworkPeerings@2020-05-01' = {
   parent: vnetSpoke
-  name: '${toHubPeeringName}'
+  name: 'spoke-to-${hubNetworkName}'
   properties: {
     remoteVirtualNetwork: {
       id: hubVnetResourceId
@@ -296,10 +303,11 @@ resource clusterVNetName_toHubPeering_resource 'Microsoft.Network/virtualNetwork
   }
 }
 
-resource clusterVNet_Microsoft_Insights_toHub 'Microsoft.Network/virtualNetworks/providers/diagnosticSettings@2017-05-01-preview' = {
-  name: '${clusterVNetName}/Microsoft.Insights/toHub'
+resource vnetSpoke_diagnosticSettings 'Microsoft.Insights/diagnosticSettings@2021-05-01-preview' = {
+  scope: vnetSpoke
+  name: 'default'
   properties: {
-    workspaceId: hubLaWorkspaceResourceId
+    workspaceId: laHub.id
     metrics: [
       {
         category: 'AllMetrics'
@@ -307,14 +315,11 @@ resource clusterVNet_Microsoft_Insights_toHub 'Microsoft.Network/virtualNetworks
       }
     ]
   }
-  dependsOn: [
-    vnetSpoke
-  ]
 }
 
 module CreateHubTo_clusterVNet_Peer './virtualNetworkPeering.bicep' = {
   name: 'CreateHubTo${clusterVNetName}Peer'
-  scope: resourceGroup(hubRgName)
+  scope: hubResourceGroup
   params: {
     remoteVirtualNetworkId: vnetSpoke.id
     hubNetworkName: hubNetworkName
@@ -327,8 +332,8 @@ module CreateHubTo_clusterVNet_Peer './virtualNetworkPeering.bicep' = {
 
 // Used as primary public entry point for cluster. Expected to be assigned to an Azure Application Gateway.
 // This is a public facing IP, and would be best behind a DDoS Policy (not deployed simply for cost considerations)
-resource pipPrimaryClusterIp 'Microsoft.Network/publicIpAddresses@2020-05-01' = {
-  name: primaryClusterPipName_var
+resource pipPrimaryClusterIp 'Microsoft.Network/publicIPAddresses@2021-05-01' = {
+  name: 'pip-${orgAppId}-00'
   location: location
   sku: {
     name: 'Standard'
